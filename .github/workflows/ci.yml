@@ -1,0 +1,12 @@
+# Actif quand `mac/` devient la racine de son propre dépôt GitHub.
+name: ci
+on: [push, pull_request]
+jobs:
+  verifier:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+      - run: cargo install cargo-audit --locked && cargo audit

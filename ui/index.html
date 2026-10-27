@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Diction</title>
+<style>
+:root{--bg:#f5f5f7;--card:#fff;--fg:#1d1d1f;--mut:#6e6e73;--line:#d2d2d7;--acc:#0a84ff;--ok:#30d158;--bad:#ff453a}
+@media (prefers-color-scheme:dark){:root{--bg:#1c1c1e;--card:#2c2c2e;--fg:#f5f5f7;--mut:#98989d;--line:#3a3a3c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px -apple-system,system-ui,sans-serif;display:flex;height:100vh}
+nav{width:190px;padding:14px 10px;border-right:1px solid var(--line);flex:none;overflow:auto}
+nav h1{font-size:15px;margin:4px 10px 10px}
+nav h3{font-size:11px;text-transform:uppercase;color:var(--mut);margin:14px 10px 4px;letter-spacing:.04em}
+nav button{display:block;width:100%;text-align:left;border:0;background:none;color:var(--fg);padding:7px 10px;border-radius:7px;font:inherit;cursor:pointer}
+nav button.on{background:var(--acc);color:#fff}
+main{flex:1;overflow:auto;padding:22px 26px 50px}
+section{display:none}section.on{display:block}
+h2{font-size:18px;margin:0 0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:4px 16px;margin-bottom:16px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border:0}
+.row small{display:block;color:var(--mut);margin-top:2px;max-width:380px}
+input[type=text],input[type=number],select,textarea{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:220px}
+textarea{width:100%;min-height:150px;font-family:ui-monospace,monospace;font-size:12px}
+input[type=checkbox]{width:18px;height:18px}
+input[type=range]{width:180px}
+button.b{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:6px;padding:6px 12px;cursor:pointer}
+button.p{background:var(--acc);border-color:var(--acc);color:#fff}
+.sc{font-weight:600;min-width:180px;text-align:center}
+.sc.rec{outline:2px solid var(--acc)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:var(--mut)}
+.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}
+#save{position:fixed;right:18px;bottom:14px;color:var(--mut);font-size:12px}
+pre{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;max-height:380px;overflow:auto;font-size:12px;white-space:pre-wrap}
+.err{color:var(--bad);font-size:12px}
+.hist{padding:10px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px}
+.hist:last-child{border:0}
+.mut{color:var(--mut)}
+</style></head>
+<body>
+<nav>
+  <h1>Diction</h1>
+  <button data-t="home" class="on">Accueil</button>
+  <h3>Personnaliser</h3>
+  <button data-t="dict">Dictionnaire</button>
+  <button data-t="format">Règles de formatage</button>
+  <h3>Paramètres</h3>
+  <button data-t="general">Général</button>
+  <button data-t="shortcut">Raccourcis</button>
+  <button data-t="insert">Insertion du texte</button>
+  <button data-t="overlay">Pastille et sons</button>
+  <button data-t="system">Système</button>
+  <button data-t="io">Importer / Exporter</button>
+  <h3>Maintenance</h3>
+  <button data-t="perms">Autorisations</button>
+  <button data-t="update">Mises à jour</button>
+  <button data-t="log">Journal</button>
+</nav>
+<main>
+<section id="home" class="on"><h2>Accueil</h2>
+ <div class="card"><div class="row"><div><span class="dot" id="sdot"></span><span id="sstate">État du raccourci</span><small id="shint"></small></div></div></div>
+ <p class="err" id="scerr"></p>
+ <div class="card"><div class="row"><div><b>Activité récente</b><small>Gardée en mémoire seulement (voir Système pour l'enregistrer)</small></div><button class="b" id="hclear">Effacer</button></div>
+  <div id="hist"></div></div></section>
+
+<section id="dict"><h2>Dictionnaire</h2>
+ <p class="mut">Un mot ou un nom par ligne : noms propres, termes techniques, jargon. Envoyés au serveur comme indice de reconnaissance.</p>
+ <textarea data-k="dictionary" data-lines placeholder="Noussi&#10;Tailscale&#10;whisper.cpp"></textarea>
+ <p class="mut" id="dcount"></p></section>
+
+<section id="format"><h2>Règles de formatage</h2>
+ <div class="card">
+  <div class="row"><div>Correction de texte court<small>Sans majuscule ni ponctuation pour N mots ou moins (« Bonjour. » devient « bonjour »). 0 = désactivé.</small></div><span><input type="range" min="0" max="10" data-k="format.short_text_words" data-int> <b id="stw"></b></span></div>
+  <div class="row"><div>Espace avant ? et !<small>Typographie française</small></div><input type="checkbox" data-k="format.space_before_qe"></div>
+  <div class="row"><div>Espace à la fin de la transcription</div><input type="checkbox" data-k="format.trailing_space"></div>
+  <div class="row"><div>Supprimer les hésitations<small>euh, um, hmm… (utile si le nettoyage par l'IA est désactivé)</small></div><input type="checkbox" data-k="format.remove_hesitations"></div>
+ </div>
+ <h2>Règles personnalisées</h2>
+ <p class="mut">Une règle par ligne : <code>chercher =&gt; remplacer</code>. Remplacement exact, appliqué dans l'ordre.</p>
+ <textarea data-k="format.custom_rules" data-lines placeholder="ia =&gt; IA"></textarea></section>
+
+<section id="general"><h2>Général</h2>
+ <div class="card">
+  <div class="row"><div>Adresse de la passerelle<small>Serveur Diction à interroger</small></div><input type="text" data-k="url"></div>
+  <div class="row"><div><span class="dot" id="cdot"></span><span id="cstate">Connexion non testée</span><small id="cinfo"></small></div><button class="b" id="test">Tester la connexion</button></div>
+  <div class="row"><div>Modèle<small>Liste annoncée par la passerelle. Le serveur de transcription peut n'en servir qu'un.</small></div><select data-k="model" id="model"></select></div>
+  <div class="row"><div>Langue<small>« Automatique » détecte la langue parlée</small></div>
+   <select data-k="language"><option value="auto">Automatique</option><option value="fr">Français</option><option value="en">Anglais</option><option value="es">Espagnol</option><option value="de">Allemand</option><option value="it">Italien</option></select></div>
+  <div class="row"><div>Microphone<small>« Automatique » suit le micro par défaut du Mac</small></div><span><select data-k="mic" id="mic"></select> <button class="b" id="micr">Actualiser</button></span></div>
+  <div class="row"><div>Nettoyage par l'IA<small>Retire les « euh », corrige la ponctuation (LLM de la passerelle)</small></div><input type="checkbox" data-k="enhance"></div>
+ </div></section>
+
+<section id="shortcut"><h2>Raccourcis</h2>
+ <div class="card">
+  <div class="row"><div>Appuyer pour parler<small>Clique, puis appuie sur la combinaison (au moins un modificateur et une touche)</small></div><button class="b sc" data-sc="shortcut"></button></div>
+  <div class="row"><div>Coller la dernière transcription<small>Utile si le texte n'a pas été inséré</small></div><button class="b sc" data-sc="shortcut_paste_last"></button></div>
+  <div class="row"><div>Annuler l'enregistrement<small>Actif seulement pendant un enregistrement</small></div><button class="b sc" data-sc="shortcut_cancel"></button></div>
+  <div class="row"><div>Mode d'enregistrement<small>Maintenir : parle tant que la touche est enfoncée. Bascule : un appui démarre, un second arrête.</small></div>
+   <select data-k="mode"><option value="hold">Maintenir pour parler</option><option value="toggle">Appuyer pour démarrer/arrêter</option></select></div>
+ </div><p class="err" id="scerr2"></p></section>
+
+<section id="insert"><h2>Insertion du texte</h2>
+ <div class="card">
+  <div class="row"><div>Insertion automatique<small>Si désactivée, le texte n'est pas inséré : utilise « Coller la dernière transcription ».</small></div><input type="checkbox" data-k="auto_insert"></div>
+  <div class="row"><div>Mode d'insertion<small>Standard : ⌘V, rapide. Direct : tape caractère par caractère, lent mais sans presse-papiers. Copie seule : ne colle rien.</small></div>
+   <select data-k="paste_method"><option value="paste">Standard (⌘V)</option><option value="direct">Direct (caractère par caractère)</option><option value="copy">Copier seulement</option></select></div>
+  <div class="row"><div>Restaurer le presse-papiers<small>Remet ton ancien contenu texte après le collage</small></div><input type="checkbox" data-k="restore_clipboard"></div>
+  <div class="row"><div>Délai avant restauration (ms)</div><input type="number" min="0" max="5000" step="50" data-k="paste_delay_ms" data-int></div>
+ </div></section>
+
+<section id="overlay"><h2>Pastille et sons</h2>
+ <div class="card">
+  <div class="row"><div>Afficher la pastille<small>Indicateur avec signal oscillant pendant l'enregistrement</small></div><input type="checkbox" data-k="overlay"></div>
+  <div class="row"><div>Position</div><select data-k="overlay_position"><option value="top">Haut de l'écran</option><option value="bottom">Bas de l'écran</option></select></div>
+  <div class="row"><div>Effets sonores</div><input type="checkbox" data-k="sounds"></div>
+  <div class="row"><div>Volume des effets sonores</div><span><input type="range" min="0" max="100" data-k="sound_volume" data-int> <b id="vol"></b></span></div>
+ </div></section>
+
+<section id="system"><h2>Système</h2>
+ <div class="card">
+  <div class="row"><div>Démarrer à l'ouverture de session</div><input type="checkbox" data-k="autostart"></div>
+  <div class="row"><div>Afficher dans le Dock<small>Si affiché, la pastille ne passe pas au-dessus des apps en plein écran</small></div><input type="checkbox" data-k="show_dock"></div>
+  <div class="row"><div>Enregistrer l'historique<small>Les 5 dernières transcriptions sur le disque. Désactivé : mémoire seulement.</small></div><input type="checkbox" data-k="history_enabled"></div>
+  <div class="row"><div>Conserver les enregistrements audio<small>Les 5 derniers, pour comprendre un échec de transcription</small></div><input type="checkbox" data-k="keep_audio"></div>
+  <div class="row"><div>Dossier du journal</div><button class="b" id="logdir">Ouvrir</button></div>
+ </div><p class="err" id="syswarn"></p></section>
+
+<section id="io"><h2>Importer / Exporter</h2>
+ <div class="card">
+  <div class="row"><div>Exporter les réglages<small>Crée ~/Downloads/diction-settings.json. Le nom du micro n'est jamais exporté.</small></div><button class="b" id="exp">Exporter</button></div>
+  <div class="row"><div>Importer des réglages<small>Chemin d'un fichier .json exporté</small></div><span><input type="text" id="imppath" placeholder="/Users/…/diction-settings.json"> <button class="b" id="imp">Importer</button></span></div>
+ </div><p id="iores" class="mut"></p></section>
+
+<section id="perms"><h2>Autorisations macOS</h2>
+ <div class="card">
+  <div class="row"><div><span class="dot" id="adot"></span>Accessibilité<small>Nécessaire pour coller dans l'app active</small></div><button class="b" id="aopen">Ouvrir les réglages</button></div>
+  <div class="row"><div><span class="dot" id="mdot"></span><span id="mstate">Microphone</span><small>Le test déclenche la demande d'autorisation</small></div><span><button class="b" id="mtest">Tester le micro</button> <button class="b" id="mopen">Réglages</button></span></div>
+ </div></section>
+
+<section id="update"><h2>Mises à jour</h2>
+ <div class="card">
+  <div class="row"><div>Version installée<small>Les mises à jour ne s'installent jamais toutes seules : l'app ouvre la page de la release</small></div><b id="ver"></b></div>
+  <div class="row"><div>Dépôt GitHub<small>Format propriétaire/dépôt. Laisse vide pour désactiver.</small></div><input type="text" data-k="update_repo" placeholder="propriétaire/dépôt"></div>
+  <div class="row"><div>Vérifier au démarrage</div><input type="checkbox" data-k="auto_update_check"></div>
+  <div class="row"><div><span class="dot" id="udot"></span><span id="ustate">Pas encore vérifié</span></div><span><button class="b" id="ucheck">Vérifier maintenant</button> <button class="b p" id="uopen" hidden>Ouvrir la release</button></span></div>
+ </div></section>
+
+<section id="log"><h2>Journal</h2><p><button class="b" id="rlog">Actualiser</button> <button class="b" id="diag">Exporter le diagnostic</button> <span id="diagres" class="err"></span></p><pre id="logtxt"></pre></section>
+</main>
+<div id="save"></div>
+<script>
+const {invoke}=window.__TAURI__.core, $=id=>document.getElementById(id);
+let cfg, timer;
+
+// ---------- navigation ----------
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('nav button,section').forEach(e=>e.classList.remove('on'));
+  b.classList.add('on');$(b.dataset.t).classList.add('on');
+  ({perms:perms,log:loadLog,home:refreshHome,shortcut:scStatus,general:loadMics})[b.dataset.t]?.();
+});
+
+// ---------- liaison réglages <-> champs (data-k = chemin, ex. format.trailing_space) ----------
+const get=(o,k)=>k.split('.').reduce((a,p)=>a?.[p],o);
+function set(o,k,v){const ps=k.split('.');const last=ps.pop();ps.reduce((a,p)=>a[p],o)[last]=v}
+const fields=()=>document.querySelectorAll('[data-k]');
+function fill(){
+  fields().forEach(el=>{
+    const v=get(cfg,el.dataset.k);
+    if(el.type==='checkbox')el.checked=!!v;
+    else if(el.hasAttribute('data-lines'))el.value=(v||[]).join('\n');
+    else{
+      if(el.tagName==='SELECT'&&![...el.options].some(o=>o.value===v))el.add(new Option(v||'Automatique',v));
+      el.value=v;
+    }
+  });
+  document.querySelectorAll('[data-sc]').forEach(b=>b.textContent=pretty(cfg[b.dataset.sc]));
+  cosmetics();
+}
+function read(){
+  fields().forEach(el=>{
+    let v;
+    if(el.type==='checkbox')v=el.checked;
+    else if(el.hasAttribute('data-lines'))v=el.value.split('\n').map(s=>s.trim()).filter(Boolean);
+    else if(el.hasAttribute('data-int'))v=parseInt(el.value||'0',10);
+    else v=el.value;
+    set(cfg,el.dataset.k,v);
+  });
+}
+function cosmetics(){
+  $('stw').textContent=cfg.format.short_text_words||'off';$('vol').textContent=cfg.sound_volume+' %';
+  $('dcount').textContent=cfg.dictionary.length+' mot(s)';
+}
+async function save(){
+  read();cosmetics();
+  try{const r=await invoke('save_config',{cfg});$('save').textContent='Enregistré';showSc(r.shortcut_error);$('syswarn').textContent=r.warning||''}
+  catch(e){$('save').textContent='Non enregistré : '+e}
+  clearTimeout(timer);timer=setTimeout(()=>$('save').textContent='',2500);
+}
+let deb;
+fields().forEach(e=>{
+  const typed=e.tagName==='TEXTAREA'||e.type==='text'||e.type==='range';
+  e.addEventListener(typed?'input':'change',()=>{clearTimeout(deb);deb=setTimeout(save,typed?500:0)});
+});
+
+// ---------- raccourcis ----------
+function pretty(s){return s.replace('Control','⌃').replace('Alt','⌥').replace('Shift','⇧').replace('Super','⌘').replace(/\+/g,' ')}
+function showSc(err){
+  $('sdot').className='dot '+(err?'bad':'ok');$('sstate').textContent=err?'Raccourcis non actifs':'Raccourcis actifs';
+  $('shint').textContent=cfg?('Parler : '+pretty(cfg.shortcut)+' · Coller la dernière : '+pretty(cfg.shortcut_paste_last)):'';
+  const m=err?('Conflit probable avec une autre app ou macOS : '+err):'';$('scerr').textContent=m;$('scerr2').textContent=m;
+}
+async function scStatus(){showSc(await invoke('shortcut_status'))}
+document.querySelectorAll('[data-sc]').forEach(btn=>{
+  btn.onclick=()=>{btn.classList.add('rec');btn.textContent='Appuie sur la combinaison…';btn.focus()};
+  btn.onblur=()=>{btn.classList.remove('rec');btn.textContent=pretty(cfg[btn.dataset.sc])};
+  btn.onkeydown=e=>{
+    if(!btn.classList.contains('rec'))return;
+    e.preventDefault();
+    if(e.key==='Escape'){btn.blur();return}
+    const c=e.code;let k=null;
+    if(c==='Space')k='Space';else if(/^Key[A-Z]$/.test(c))k=c[3];else if(/^Digit\d$/.test(c))k=c[5];
+    else if(/^F\d{1,2}$/.test(c))k=c;else if(/^Arrow/.test(c))k=c.slice(5);
+    else if(['Enter','Tab','Backspace'].includes(c))k=c;
+    const mods=[e.ctrlKey&&'Control',e.altKey&&'Alt',e.shiftKey&&'Shift',e.metaKey&&'Super'].filter(Boolean);
+    if(!k||!mods.length)return;
+    cfg[btn.dataset.sc]=[...mods,k].join('+');btn.classList.remove('rec');btn.textContent=pretty(cfg[btn.dataset.sc]);save();
+  };
+});
+
+// ---------- connexion, micros ----------
+$('test').onclick=async()=>{
+  read();$('cstate').textContent='Test en cours…';$('cdot').className='dot';$('cinfo').textContent='';
+  try{
+    const r=await invoke('test_connection',{url:cfg.url});
+    $('cdot').className='dot ok';$('cstate').textContent='Passerelle joignable ('+r.ms+' ms)';
+    $('cinfo').textContent=r.models.length+' modèle(s) annoncé(s)';
+    const sel=$('model'),cur=cfg.model;sel.innerHTML='';
+    r.models.forEach(m=>sel.add(new Option(m,m)));
+    if(!r.models.includes(cur))sel.add(new Option(cur+' (actuel)',cur));
+    sel.value=cur;
+  }catch(e){$('cdot').className='dot bad';$('cstate').textContent='Injoignable';$('cinfo').textContent=e}
+};
+async function loadMics(){
+  const sel=$('mic'),cur=cfg.mic;sel.innerHTML='';sel.add(new Option('Automatique',''));
+  (await invoke('list_mics')).forEach(m=>sel.add(new Option(m,m)));
+  if(cur&&![...sel.options].some(o=>o.value===cur))sel.add(new Option(cur+' (absent)',cur));
+  sel.value=cur;
+}
+$('micr').onclick=loadMics;
+
+// ---------- accueil ----------
+async function refreshHome(){
+  const items=await invoke('get_history');
+  $('hist').innerHTML=items.length?'':'<p class="mut">Aucune dictée pour le moment.</p>';
+  items.forEach(t=>{
+    const d=document.createElement('div');d.className='hist';
+    const s=document.createElement('span');s.textContent=t;
+    const b=document.createElement('button');b.className='b';b.textContent='Copier';b.onclick=()=>navigator.clipboard.writeText(t);
+    d.append(s,b);$('hist').append(d);
+  });
+}
+$('hclear').onclick=async()=>{await invoke('clear_history');refreshHome()};
+window.__TAURI__.event.listen('history',refreshHome);
+
+// ---------- autorisations, système, import/export ----------
+async function perms(){$('adot').className='dot '+(await invoke('accessibility')?'ok':'bad')}
+$('aopen').onclick=()=>invoke('open_privacy',{pane:'accessibility'});
+$('mopen').onclick=()=>invoke('open_privacy',{pane:'microphone'});
+$('mtest').onclick=async()=>{
+  try{await invoke('test_mic',{mic:cfg.mic});$('mdot').className='dot ok';$('mstate').textContent='Microphone : accès OK'}
+  catch(e){$('mdot').className='dot bad';$('mstate').textContent='Microphone : '+e}
+};
+$('logdir').onclick=()=>invoke('open_logs_folder');
+$('exp').onclick=async()=>{try{$('iores').textContent='Créé : '+await invoke('export_settings')}catch(e){$('iores').textContent='Échec : '+e}};
+$('imp').onclick=async()=>{
+  try{cfg=await invoke('import_settings',{path:$('imppath').value});fill();$('iores').textContent='Réglages importés'}
+  catch(e){$('iores').textContent='Échec : '+e}
+};
+
+// ---------- mises à jour ----------
+let relUrl='';
+function showUpdate(r){
+  $('udot').className='dot '+(r.newer?'bad':'ok');
+  $('ustate').textContent=r.newer?('Nouvelle version '+r.latest+' disponible (installée : '+r.current+')'):('À jour ('+r.current+')');
+  relUrl=r.url;$('uopen').hidden=!r.newer;
+}
+$('ucheck').onclick=async()=>{
+  read();$('ustate').textContent='Vérification…';$('udot').className='dot';
+  try{showUpdate(await invoke('check_update',{repo:cfg.update_repo}))}
+  catch(e){$('udot').className='dot bad';$('ustate').textContent=e}
+};
+$('uopen').onclick=()=>invoke('open_url',{url:relUrl});
+window.__TAURI__.event.listen('update',e=>showUpdate(e.payload));
+invoke('app_version').then(v=>$('ver').textContent=v);
+
+// ---------- journal ----------
+async function loadLog(){$('logtxt').textContent=(await invoke('read_log'))||'(vide)'}
+$('rlog').onclick=loadLog;
+$('diag').onclick=async()=>{try{$('diagres').textContent='Créé : '+await invoke('export_diagnostic')}catch(e){$('diagres').textContent='Échec : '+e}};
+
+(async()=>{cfg=await invoke('get_config');fill();scStatus();refreshHome()})();
+</script></body></html>

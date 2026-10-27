@@ -1,0 +1,8 @@
+[package]
+name = "diction-platform"
+description = "Intégration système (macOS) : collage, notifications, autorisations."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+diction-core.workspace = true

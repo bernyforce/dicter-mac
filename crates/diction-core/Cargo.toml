@@ -1,0 +1,10 @@
+[package]
+name = "diction-core"
+description = "Réglages, erreurs et client de la passerelle Diction. Aucune dépendance graphique ni système."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+ureq.workspace = true

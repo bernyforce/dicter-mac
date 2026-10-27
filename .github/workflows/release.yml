@@ -1,0 +1,18 @@
+# Se déclenche sur une étiquette vX.Y.Z et joint l'app compilée à la release.
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  construire:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo install tauri-cli --version "^2" --locked
+      - run: cd src-tauri && cargo tauri build --bundles app
+      - run: ditto -c -k --keepParent target/release/bundle/macos/Diction.app Diction-mac.zip
+      - run: gh release create "$GITHUB_REF_NAME" Diction-mac.zip --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

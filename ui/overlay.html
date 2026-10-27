@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Diction</title>
+<style>
+html,body{margin:0;background:transparent;font:13px -apple-system,system-ui,sans-serif;overflow:hidden}
+#pill{display:flex;align-items:center;gap:10px;height:44px;margin:6px 10px;padding:0 16px;border-radius:22px;background:rgba(28,28,30,.92);color:#fff;box-shadow:0 4px 18px rgba(0,0,0,.35)}
+#dot{width:10px;height:10px;border-radius:50%;background:#ff453a;animation:pulse 1s infinite}
+#wave{width:96px;height:28px}
+#msg{max-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.processing #dot{background:#0a84ff;animation:spin 1s linear infinite;border-radius:2px}
+.error #dot{background:#ffd60a;animation:none}
+.processing #wave,.error #wave{display:none}
+@keyframes pulse{50%{opacity:.35}}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style></head>
+<body><div id="pill"><span id="dot"></span><canvas id="wave" width="192" height="56"></canvas><span id="msg">Écoute…</span></div>
+<script>
+const {listen}=window.__TAURI__.event, pill=document.getElementById('pill'), msg=document.getElementById('msg');
+const cv=document.getElementById('wave'), g=cv.getContext('2d');
+const text={recording:'Écoute…',processing:'Transcription…',idle:''};
+const N=24, hist=new Array(N).fill(0); let target=0, cur=0, phase=0, active=false;
+const VOICE=0.02; // niveau RMS au-dessus duquel on considère qu'une voix est perçue
+function frame(){
+  if(!active)return;
+  cur+= (target-cur)*(target>cur?0.5:0.15);       // montée rapide, descente douce
+  phase+=0.25;
+  hist.shift();hist.push(cur);
+  g.clearRect(0,0,cv.width,cv.height);
+  const voice=cur>VOICE, w=cv.width/N;
+  hist.forEach((v,i)=>{
+    const a=Math.min(1,Math.sqrt(v)*3);           // perception logarithmique approchée
+    const osc=voice?0.65+0.35*Math.sin(phase+i*0.6):1;
+    const h=Math.max(4,a*cv.height*osc);
+    g.fillStyle=voice?'#0a84ff':'rgba(255,255,255,.45)';
+    g.beginPath();g.roundRect(i*w+3,(cv.height-h)/2,w-6,h,4);g.fill();
+  });
+  requestAnimationFrame(frame);
+}
+listen('state',e=>{
+  pill.className=e.payload;
+  if(e.payload in text)msg.textContent=text[e.payload];
+  const was=active;active=e.payload==='recording';
+  if(active&&!was){hist.fill(0);cur=target=0;requestAnimationFrame(frame)}
+});
+listen('error',e=>{msg.textContent=e.payload;msg.title=e.payload});
+listen('level',e=>{target=e.payload});
+</script></body></html>

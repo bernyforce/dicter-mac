@@ -1,0 +1,17 @@
+[package]
+name = "diction-mac"
+description = "Diction pour Mac : coque Tauri (fenêtres, barre de menus, raccourci)."
+version.workspace = true
+edition.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+diction-audio.workspace = true
+diction-core.workspace = true
+diction-platform.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
+tauri-plugin-global-shortcut = "2"
