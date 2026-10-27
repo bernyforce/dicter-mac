@@ -13,6 +13,7 @@ pub enum Erreur {
     Collage(String),
     Config(String),
     Update(String),
+    Llm(String),
 }
 
 impl Erreur {
@@ -26,6 +27,7 @@ impl Erreur {
             Erreur::Collage(_) => "E-PASTE",
             Erreur::Config(_) => "E-CFG",
             Erreur::Update(_) => "E-UPD",
+            Erreur::Llm(_) => "E-LLM",
         }
     }
 }
@@ -44,6 +46,7 @@ impl fmt::Display for Erreur {
             ),
             Erreur::Config(m) => write!(f, "[{code}] Réglage invalide : {m}"),
             Erreur::Update(m) => write!(f, "[{code}] Mise à jour : {m}"),
+            Erreur::Llm(m) => write!(f, "[{code}] Mode Commande (texte inchangé) : {m}"),
         }
     }
 }

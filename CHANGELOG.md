@@ -4,7 +4,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions : [S
 
 ## [Non publié]
 
-Rien pour l'instant.
+## [0.4.0]
+### Added
+- Mode Commande (désactivé par défaut) : une instruction dictée transforme le texte sélectionné via un modèle local compatible OpenAI. Raccourci `Ctrl+Maj+X`, code d'erreur `E-LLM`, texte laissé intact en cas d'échec.
+
 
 ## [0.3.0]
 ### Added

@@ -77,3 +77,32 @@ pub fn deliver(text: &str, cfg: &Config) -> Result<(), Erreur> {
     }
     Ok(())
 }
+
+/// Copie la sélection courante (⌘C) et remet le presse-papiers d'avant. Vide = rien de sélectionné.
+// ponytail: si Ctrl/Maj sont encore tenus, ⌘C peut être détourné; l'appelant attend avant d'appeler.
+pub fn copy_selection() -> Result<String, Erreur> {
+    let old = Command::new("pbpaste")
+        .output()
+        .map(|o| o.stdout)
+        .unwrap_or_default();
+    clipboard_set("")?;
+    let ok = Command::new("osascript")
+        .args([
+            "-e",
+            "tell application \"System Events\" to keystroke \"c\" using command down",
+        ])
+        .status()
+        .map_err(|e| Erreur::Collage(e.to_string()))?;
+    std::thread::sleep(Duration::from_millis(150));
+    let sel = Command::new("pbpaste")
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default();
+    let _ = clipboard_set(&String::from_utf8_lossy(&old));
+    if !ok.success() {
+        return Err(Erreur::Collage(
+            "autorisation Accessibilité manquante ?".into(),
+        ));
+    }
+    Ok(sel)
+}

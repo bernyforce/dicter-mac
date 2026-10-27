@@ -19,7 +19,7 @@ use diction_audio::{self as audio, Cmd, Handlers};
 use diction_core::config::{self, Config};
 use diction_core::erreur::{self, Erreur, log};
 use diction_core::history::History;
-use diction_core::{format, net};
+use diction_core::{commande, format, net};
 use diction_platform::{self as platform, paste};
 
 use commands::SaveResult;
@@ -34,6 +34,7 @@ struct Shortcuts {
     main: Option<Shortcut>,
     paste_last: Option<Shortcut>,
     cancel: Option<Shortcut>,
+    command: Option<Shortcut>,
 }
 
 pub(crate) struct Shared {
@@ -42,6 +43,8 @@ pub(crate) struct Shared {
     tx: mpsc::Sender<Cmd>,
     recording: AtomicBool,
     cancelled: AtomicBool,
+    /// Vrai si l'enregistrement en cours est une instruction du Mode Commande.
+    command: AtomicBool,
     shortcut_error: Mutex<Option<String>>,
     shortcuts: Mutex<Shortcuts>,
     pub(crate) history: Mutex<History>,
@@ -247,6 +250,10 @@ fn handle_audio(app: &AppHandle, samples: Vec<i16>, rate: u32) {
         if cfg.keep_audio {
             save_audio(&app.state::<Shared>().audio_dir, &wav);
         }
+        if app.state::<Shared>().command.swap(false, Ordering::SeqCst) {
+            finish(&app, run_command(&app, &cfg, &wav).err());
+            return;
+        }
         let r = net::transcribe(&cfg, "dictee.wav", &wav).and_then(|t| {
             let text = format::apply(&t, &cfg.format);
             if text.is_empty() {
@@ -261,6 +268,40 @@ fn handle_audio(app: &AppHandle, samples: Vec<i16>, rate: u32) {
         });
         finish(&app, r.err());
     });
+}
+
+/// Mode Commande : instruction dictée + sélection → modèle local → remplacement. Échec = texte intact.
+fn run_command(app: &AppHandle, cfg: &Config, wav: &[u8]) -> Result<(), Erreur> {
+    let instruction = net::transcribe(
+        &Config {
+            enhance: false,
+            ..cfg.clone()
+        },
+        "commande.wav",
+        wav,
+    )?;
+    if instruction.is_empty() {
+        return Ok(());
+    }
+    // Laisse le temps de relâcher les touches du raccourci avant d'envoyer ⌘C.
+    std::thread::sleep(Duration::from_millis(300));
+    let selection = paste::copy_selection()?;
+    let reply = commande::run(cfg, &instruction, &selection)?;
+    remember(app, &reply, cfg);
+    if selection.is_empty() {
+        // Sans sélection : une réponse à lire, pas un texte à coller.
+        paste::deliver(
+            &reply,
+            &Config {
+                paste_method: "copy".into(),
+                ..cfg.clone()
+            },
+        )?;
+        platform::notifier("Réponse copiée dans le presse-papiers");
+        Ok(())
+    } else {
+        paste::deliver(&reply, cfg)
+    }
 }
 
 fn paste_last(app: &AppHandle) {
@@ -279,12 +320,17 @@ fn paste_last(app: &AppHandle) {
 }
 
 fn on_shortcut(app: &AppHandle, sc: &Shortcut, state: ShortcutState) {
-    let (main, last, cancel) = {
+    let (main, last, cancel, command) = {
         let sh = app.state::<Shared>();
         let Ok(s) = sh.shortcuts.lock() else { return };
-        (s.main, s.paste_last, s.cancel)
+        (s.main, s.paste_last, s.cancel, s.command)
     };
-    if Some(*sc) == main {
+    if Some(*sc) == main || Some(*sc) == command {
+        let is_command = Some(*sc) == command;
+        let sh = app.state::<Shared>();
+        if state == ShortcutState::Pressed && !sh.recording.load(Ordering::SeqCst) {
+            sh.command.store(is_command, Ordering::SeqCst);
+        }
         let hold = current_cfg(app).mode == "hold";
         let recording = app.state::<Shared>().recording.load(Ordering::SeqCst);
         match (hold, state) {
@@ -314,18 +360,28 @@ fn apply_shortcuts(app: &AppHandle, cfg: &Config) -> Result<(), String> {
             parse(&cfg.shortcut_paste_last)?,
             parse(&cfg.shortcut_cancel)?,
         );
+        let command = if cfg.command_enabled {
+            Some(parse(&cfg.shortcut_command)?)
+        } else {
+            None
+        };
         if let Ok(mut s) = app.state::<Shared>().shortcuts.lock() {
             *s = Shortcuts {
                 main: Some(main),
                 paste_last: Some(last),
                 cancel: Some(cancel),
+                command,
             };
         }
         let mut errs = Vec::new();
-        for (name, sc) in [
+        let mut all = vec![
             ("enregistrement", main),
             ("coller la dernière transcription", last),
-        ] {
+        ];
+        if let Some(c) = command {
+            all.push(("mode Commande", c));
+        }
+        for (name, sc) in all {
             if let Err(e) = gs.register(sc) {
                 errs.push(format!("{name} : {e}"));
             }
@@ -370,10 +426,14 @@ pub(crate) fn apply_config(app: &AppHandle, cfg: Config) -> Result<SaveResult, S
         &old.shortcut,
         &old.shortcut_paste_last,
         &old.shortcut_cancel,
+        &old.shortcut_command,
+        old.command_enabled,
     ) != (
         &cfg.shortcut,
         &cfg.shortcut_paste_last,
         &cfg.shortcut_cancel,
+        &cfg.shortcut_command,
+        cfg.command_enabled,
     ) {
         apply_shortcuts(app, &cfg).err()
     } else {
@@ -463,6 +523,7 @@ fn main() {
                 tx,
                 recording: AtomicBool::new(false),
                 cancelled: AtomicBool::new(false),
+                command: AtomicBool::new(false),
                 shortcut_error: Mutex::new(None),
                 shortcuts: Mutex::new(Shortcuts::default()),
                 history: Mutex::new(history),

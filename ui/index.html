@@ -41,6 +41,8 @@ pre{background:var(--card);border:1px solid var(--line);border-radius:8px;paddin
   <h3>Personnaliser</h3>
   <button data-t="dict">Dictionnaire</button>
   <button data-t="format">Règles de formatage</button>
+  <h3>Extensions</h3>
+  <button data-t="command">Mode Commande</button>
   <h3>Paramètres</h3>
   <button data-t="general">Général</button>
   <button data-t="shortcut">Raccourcis</button>
@@ -95,6 +97,14 @@ pre{background:var(--card);border:1px solid var(--line);border-radius:8px;paddin
   <div class="row"><div>Mode d'enregistrement<small>Maintenir : parle tant que la touche est enfoncée. Bascule : un appui démarre, un second arrête.</small></div>
    <select data-k="mode"><option value="hold">Maintenir pour parler</option><option value="toggle">Appuyer pour démarrer/arrêter</option></select></div>
  </div><p class="err" id="scerr2"></p></section>
+
+<section id="command"><h2>Mode Commande</h2>
+ <div class="card">
+  <div class="row"><div>Activer<small>Sélectionne du texte, maintiens le raccourci, dicte une instruction (« traduis en anglais »). Le texte est remplacé. Sans sélection, la réponse est copiée.</small></div><input type="checkbox" data-k="command_enabled"></div>
+  <div class="row"><div>Raccourci<small>Clique, puis appuie sur la combinaison</small></div><button class="b sc" data-sc="shortcut_command"></button></div>
+  <div class="row"><div>Adresse du modèle<small>API compatible OpenAI, locale par défaut (llama-server)</small></div><input type="text" data-k="command_url"></div>
+  <div class="row"><div>Modèle</div><input type="text" data-k="command_model"></div>
+ </div><p class="err" id="scerr3"></p></section>
 
 <section id="insert"><h2>Insertion du texte</h2>
  <div class="card">
@@ -204,7 +214,7 @@ function pretty(s){return s.replace('Control','⌃').replace('Alt','⌥').replac
 function showSc(err){
   $('sdot').className='dot '+(err?'bad':'ok');$('sstate').textContent=err?'Raccourcis non actifs':'Raccourcis actifs';
   $('shint').textContent=cfg?('Parler : '+pretty(cfg.shortcut)+' · Coller la dernière : '+pretty(cfg.shortcut_paste_last)):'';
-  const m=err?('Conflit probable avec une autre app ou macOS : '+err):'';$('scerr').textContent=m;$('scerr2').textContent=m;
+  const m=err?('Conflit probable avec une autre app ou macOS : '+err):'';$('scerr').textContent=m;$('scerr2').textContent=m;$('scerr3').textContent=m;
 }
 async function scStatus(){showSc(await invoke('shortcut_status'))}
 document.querySelectorAll('[data-sc]').forEach(btn=>{

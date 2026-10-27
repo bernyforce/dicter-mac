@@ -1,3 +1,4 @@
+pub mod commande;
 pub mod config;
 pub mod erreur;
 pub mod format;

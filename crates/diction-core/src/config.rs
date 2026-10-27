@@ -50,6 +50,11 @@ pub struct Config {
     pub sound_volume: u8,
     pub history_enabled: bool,
     pub keep_audio: bool,
+    /// Mode Commande : désactivé par défaut, utilise un modèle local compatible OpenAI.
+    pub command_enabled: bool,
+    pub shortcut_command: String,
+    pub command_url: String,
+    pub command_model: String,
 }
 
 impl Default for Config {
@@ -80,6 +85,10 @@ impl Default for Config {
             sound_volume: 50,
             history_enabled: false,
             keep_audio: false,
+            command_enabled: false,
+            shortcut_command: "Control+Shift+X".into(),
+            command_url: "http://127.0.0.1:8000/v1".into(),
+            command_model: "Qwen3.5-4B-UD-Q4_K_XL".into(),
         }
     }
 }
@@ -117,13 +126,22 @@ impl Config {
         if self.dictionary.len() > 500 || self.format.custom_rules.len() > 200 {
             return bad("trop de mots ou de règles");
         }
-        let (a, b, c) = (
+        let (a, b, c, d) = (
             &self.shortcut,
             &self.shortcut_paste_last,
             &self.shortcut_cancel,
+            &self.shortcut_command,
         );
-        if a == b || a == c || b == c {
+        if a == b || a == c || b == c || a == d || b == d || c == d {
             return bad("deux actions ne peuvent pas partager le même raccourci");
+        }
+        if self.command_enabled
+            && (self.command_url.trim().is_empty()
+                || !self.command_url.starts_with("http")
+                || self.command_model.trim().is_empty()
+                || self.shortcut_command.trim().is_empty())
+        {
+            return bad("mode Commande : adresse http, modèle et raccourci obligatoires");
         }
         if self.paste_delay_ms > 5000 {
             return bad("délai de collage trop long (5000 ms max)");
