@@ -73,8 +73,44 @@ impl From<ureq::Error> for Erreur {
     }
 }
 
+/// Renomme les anciens fichiers `DictionMac*` de `dir` vers `DICTER*` s'ils existent et que le nouveau n'existe pas.
+/// Rend les erreurs de renommage, sans jamais rien écraser.
+fn migrate_old_files(dir: &std::path::Path) -> Vec<String> {
+    let mut errs = Vec::new();
+    for (old, new) in [
+        ("DictionMac.log", "DICTER.log"),
+        ("DictionMac-diagnostic.txt", "DICTER-diagnostic.txt"),
+    ] {
+        let (o, n) = (dir.join(old), dir.join(new));
+        if o.exists()
+            && !n.exists()
+            && let Err(e) = std::fs::rename(&o, &n)
+        {
+            errs.push(format!("migration de {old} impossible : {e}"));
+        }
+    }
+    errs
+}
+
 pub fn log_path() -> Option<std::path::PathBuf> {
-    std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join("Library/Logs/DictionMac.log"))
+    static MIGRATION: std::sync::Once = std::sync::Once::new();
+    let dir = std::path::Path::new(&std::env::var_os("HOME")?).join("Library/Logs");
+    let path = dir.join("DICTER.log");
+    if !cfg!(test) {
+        MIGRATION.call_once(|| {
+            for e in migrate_old_files(&dir) {
+                // Jamais bloquant : l'avertissement va dans le nouveau journal si possible.
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&path)
+                {
+                    let _ = writeln!(f, "[WARN] {e}");
+                }
+            }
+        });
+    }
+    Some(path)
 }
 
 /// Plafond du journal : au-delà, l'ancien fichier passe en `.1` (une seule génération gardée).
@@ -156,7 +192,7 @@ pub fn diagnostic_text(
     log_tail: &str,
 ) -> String {
     format!(
-        "Diction {version}\nmacOS {os}\nAccessibilité : {}\n\n== Réglages ==\n{config_json}\n\n== Journal (fin) ==\n{log_tail}\n",
+        "DICTER {version}\nmacOS {os}\nAccessibilité : {}\n\n== Réglages ==\n{config_json}\n\n== Journal (fin) ==\n{log_tail}\n",
         if accessibility {
             "accordée"
         } else {
@@ -213,8 +249,33 @@ mod tests {
     }
 
     #[test]
+    fn la_migration_renomme_sans_ecraser() {
+        let d = std::env::temp_dir().join(format!("dicter-mig-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("DictionMac.log"), "ancien").unwrap();
+        std::fs::write(d.join("DictionMac-diagnostic.txt"), "ancien diag").unwrap();
+        std::fs::write(d.join("DICTER-diagnostic.txt"), "nouveau diag").unwrap();
+        assert!(migrate_old_files(&d).is_empty());
+        assert_eq!(
+            std::fs::read_to_string(d.join("DICTER.log")).unwrap(),
+            "ancien"
+        );
+        assert!(!d.join("DictionMac.log").exists());
+        // le nouveau existait déjà : rien n'est écrasé, l'ancien reste
+        assert_eq!(
+            std::fs::read_to_string(d.join("DICTER-diagnostic.txt")).unwrap(),
+            "nouveau diag"
+        );
+        assert!(d.join("DictionMac-diagnostic.txt").exists());
+        // relance sans ancien fichier : rien ne casse
+        assert!(migrate_old_files(&d.join("absent")).is_empty());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn le_diagnostic_contient_les_sections() {
         let d = diagnostic_text("0.2.1", "26.6", false, "{}", "ligne");
-        assert!(d.contains("Diction 0.2.1") && d.contains("refusée") && d.contains("ligne"));
+        assert!(d.contains("DICTER 0.2.1") && d.contains("refusée") && d.contains("ligne"));
     }
 }

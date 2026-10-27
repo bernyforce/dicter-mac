@@ -159,7 +159,7 @@ pub fn export_diagnostic(app: AppHandle) -> Result<String, String> {
         &read_log(),
     );
     let path = erreur::log_path()
-        .and_then(|p| p.parent().map(|d| d.join("DictionMac-diagnostic.txt")))
+        .and_then(|p| p.parent().map(|d| d.join("DICTER-diagnostic.txt")))
         .ok_or("dossier des journaux introuvable")?;
     std::fs::write(&path, text).map_err(|e| e.to_string())?;
     platform::reveal(&path);

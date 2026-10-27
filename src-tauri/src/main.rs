@@ -1,5 +1,5 @@
-//! Diction pour Mac : dictée vocale via une passerelle Diction. Réglages dans la fenêtre « Diction »,
-//! pastille d'enregistrement au-dessus des fenêtres. Journal : ~/Library/Logs/DictionMac.log
+//! DICTER pour Mac : dictée vocale via une passerelle Diction. Réglages dans la fenêtre « DICTER »,
+//! pastille d'enregistrement au-dessus des fenêtres. Journal : ~/Library/Logs/DICTER.log
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -603,6 +603,12 @@ fn main() {
             duck::init(&dir);
             duck::restore_pending();
             erreur::set_log_level(&cfg.log_level);
+            // Le plist du LaunchAgent garde le chemin de l'exécutable : on le réécrit (idempotent) à chaque lancement.
+            if cfg.autostart
+                && let Err(e) = platform::set_autostart(true)
+            {
+                log(&e.to_string());
+            }
             let history = if cfg.history_enabled {
                 History::load(&history_path)
             } else {
@@ -725,5 +731,15 @@ mod tests {
         assert!(autostop_due(3, 3, true));
         assert!(!autostop_due(4, 3, true));
         assert!(!autostop_due(3, 3, false));
+    }
+
+    #[test]
+    fn le_nom_affiche_est_dicter_et_la_passerelle_garde_son_nom() {
+        let conf = include_str!("../tauri.conf.json");
+        let v: serde_json::Value = serde_json::from_str(conf).unwrap();
+        assert_eq!(v["productName"], "DICTER");
+        assert_eq!(v["identifier"], "com.bf.diction-mac");
+        let ui = include_str!("../../ui/index.html");
+        assert!(ui.contains("passerelle Diction") || ui.contains("Serveur Diction"));
     }
 }

@@ -3,7 +3,7 @@ members = ["crates/diction-core", "crates/diction-audio", "crates/diction-platfo
 resolver = "3"
 
 [workspace.package]
-version = "0.6.0"
+version = "0.6.1"
 edition = "2024"
 license = "MIT"
 

@@ -1,6 +1,6 @@
 [package]
 name = "diction-mac"
-description = "Diction pour Mac : coque Tauri (fenêtres, barre de menus, raccourci)."
+description = "DICTER pour Mac : coque Tauri (fenêtres, barre de menus, raccourci)."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

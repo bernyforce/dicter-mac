@@ -4,6 +4,15 @@ Format : [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions : [S
 
 ## [Non publié]
 
+## [0.6.1]
+### Changed
+- L'app s'appelle maintenant DICTER à l'écran : `DICTER.app`, titre des fenêtres, notifications, texte de demande d'accès au micro. L'identifiant (`com.bf.diction-mac`), le binaire et la passerelle Diction ne changent pas.
+- Le journal devient `~/Library/Logs/DICTER.log` et le diagnostic `DICTER-diagnostic.txt`. Les anciens fichiers `DictionMac*` sont renommés tout seuls au premier usage, sans jamais écraser un fichier existant.
+- Si le démarrage à l'ouverture de session est activé, le LaunchAgent est réécrit à chaque lancement pour pointer vers la bonne app.
+
+### Fixed
+- `release.yml` : ajoute l'archive à la release si elle existe déjà au lieu d'échouer.
+
 ## [0.6.0]
 ### Added
 - « Baisser les autres sons » (`duck_others`, `duck_percent`) : le volume système descend à N % de sa valeur au début de l'enregistrement et revient à la fin, sur annulation, erreur, arrêt automatique, panique et fermeture de l'app. Un fichier `duck-pending` restaure aussi le volume au lancement après un plantage. Volume modifié par l'utilisateur pendant la dictée ou sortie muette : rien n'est touché. Code d'erreur `E-DUCK`.

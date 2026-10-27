@@ -32,8 +32,8 @@ L'app ne télécharge ni n'installe rien toute seule : elle ouvre la page de la 
 Il installe automatiquement, mais impose une clé de signature privée (perdre la clé interdit toute mise à jour future) et des fichiers `latest.json` signés. Ce coût n'est pas justifié tant qu'il y a un seul utilisateur. À reconsidérer si l'app est distribuée. Source : documentation Tauri v2, page « Updater ».
 
 ## Diagnostiquer une panne
-1. Réglages > Journal > « Exporter le diagnostic » : crée `~/Library/Logs/DictionMac-diagnostic.txt` (versions, réglages, fin du journal ; jamais le texte dicté).
-2. Chercher le code dans le journal `~/Library/Logs/DictionMac.log`.
+1. Réglages > Journal > « Exporter le diagnostic » : crée `~/Library/Logs/DICTER-diagnostic.txt` (versions, réglages, fin du journal ; jamais le texte dicté).
+2. Chercher le code dans le journal `~/Library/Logs/DICTER.log`.
 
 | Code | Étape | Première vérification |
 |---|---|---|

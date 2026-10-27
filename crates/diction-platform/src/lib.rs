@@ -14,7 +14,7 @@ pub fn notifier(msg: &str) {
             "-e",
             "on run argv",
             "-e",
-            "display notification (item 1 of argv) with title \"Diction\"",
+            "display notification (item 1 of argv) with title \"DICTER\"",
             "-e",
             "end run",
         ])
