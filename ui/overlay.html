@@ -8,7 +8,8 @@ html,body{margin:0;background:transparent;font:13px -apple-system,system-ui,sans
 #msg{max-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .processing #dot{background:#0a84ff;animation:spin 1s linear infinite;border-radius:2px}
 .error #dot{background:#ffd60a;animation:none}
-.processing #wave,.error #wave{display:none}
+.processing #wave,.error #wave,.result #wave,.result #dot{display:none}
+.result #msg{max-width:190px;white-space:normal;font-size:11px;line-height:13px;max-height:26px}
 @keyframes pulse{50%{opacity:.35}}
 @keyframes spin{to{transform:rotate(360deg)}}
 </style></head>
@@ -42,5 +43,7 @@ listen('state',e=>{
   if(active&&!was){hist.fill(0);cur=target=0;requestAnimationFrame(frame)}
 });
 listen('error',e=>{msg.textContent=e.payload;msg.title=e.payload});
+// Texte reconnu : textContent seulement, coupé à 120 caractères.
+listen('result',e=>{pill.className='result';msg.textContent=String(e.payload).slice(0,120);msg.title=''});
 listen('level',e=>{target=e.payload});
 </script></body></html>

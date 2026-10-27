@@ -1,8 +1,11 @@
 //! Tout ce qui parle au système d'exploitation. Seul module à adapter pour Windows et Linux.
 
+pub mod duck;
 pub mod paste;
 
 use std::process::Command;
+
+use diction_core::erreur::{Erreur, log};
 
 /// Notification système. Le message passe en argument d'osascript, sans interpolation.
 pub fn notifier(msg: &str) {
@@ -70,14 +73,35 @@ pub fn open_url(url: &str) {
     }
 }
 
-/// Joue un effet sonore système sans attendre sa fin. `kind` : "start" ou "stop".
+/// Fichier système de l'effet. `kind` : "start" ou "stop".
+fn sound_file(kind: &str) -> &'static str {
+    if kind == "start" {
+        "/System/Library/Sounds/Tink.aiff"
+    } else {
+        "/System/Library/Sounds/Pop.aiff"
+    }
+}
+
+/// Joue un effet sonore sans attendre sa fin et sans jamais bloquer la dictée.
+/// Un échec s'écrit dans le journal ([E-SND]). Le thread attend le processus pour ne pas laisser de zombie.
 pub fn play_sound(kind: &str, volume: u8) {
-    let name = if kind == "start" { "Tink" } else { "Pop" };
-    let _ = Command::new("afplay")
+    let spawned = Command::new("afplay")
         .arg("-v")
         .arg(format!("{:.2}", f32::from(volume.min(100)) / 100.0))
-        .arg(format!("/System/Library/Sounds/{name}.aiff"))
+        .arg(sound_file(kind))
         .spawn();
+    match spawned {
+        Ok(mut child) => {
+            std::thread::spawn(move || match child.wait() {
+                Ok(s) if !s.success() => {
+                    log(&Erreur::Son(format!("afplay a rendu {s}")).to_string())
+                }
+                Err(e) => log(&Erreur::Son(e.to_string()).to_string()),
+                _ => {}
+            });
+        }
+        Err(e) => log(&Erreur::Son(e.to_string()).to_string()),
+    }
 }
 
 fn xml_escape(s: &str) -> String {
@@ -119,6 +143,12 @@ mod tests {
     fn le_plist_de_demarrage_echappe_le_chemin() {
         let p = autostart_plist("/Apps/A&B/diction");
         assert!(p.contains("A&amp;B") && p.contains("RunAtLoad"));
+    }
+
+    #[test]
+    fn chaque_effet_a_son_fichier() {
+        assert!(sound_file("start").ends_with("Tink.aiff"));
+        assert!(sound_file("stop").ends_with("Pop.aiff"));
     }
 
     #[test]

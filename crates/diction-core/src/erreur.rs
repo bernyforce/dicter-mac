@@ -2,6 +2,7 @@
 
 use std::fmt;
 use std::io::Write;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, PartialEq)]
@@ -14,6 +15,8 @@ pub enum Erreur {
     Config(String),
     Update(String),
     Llm(String),
+    Son(String),
+    Duck(String),
 }
 
 impl Erreur {
@@ -28,6 +31,8 @@ impl Erreur {
             Erreur::Config(_) => "E-CFG",
             Erreur::Update(_) => "E-UPD",
             Erreur::Llm(_) => "E-LLM",
+            Erreur::Son(_) => "E-SND",
+            Erreur::Duck(_) => "E-DUCK",
         }
     }
 }
@@ -47,6 +52,14 @@ impl fmt::Display for Erreur {
             Erreur::Config(m) => write!(f, "[{code}] Réglage invalide : {m}"),
             Erreur::Update(m) => write!(f, "[{code}] Mise à jour : {m}"),
             Erreur::Llm(m) => write!(f, "[{code}] Mode Commande (texte inchangé) : {m}"),
+            Erreur::Son(m) => write!(
+                f,
+                "[{code}] Effet sonore non joué (sans effet sur la dictée) : {m}"
+            ),
+            Erreur::Duck(m) => write!(
+                f,
+                "[{code}] Volume système non modifié (sans effet sur la dictée) : {m}"
+            ),
         }
     }
 }
@@ -64,9 +77,42 @@ pub fn log_path() -> Option<std::path::PathBuf> {
     std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join("Library/Logs/DictionMac.log"))
 }
 
-/// Horodatage Unix + cause. Jamais le texte dicté.
+/// Plafond du journal : au-delà, l'ancien fichier passe en `.1` (une seule génération gardée).
+const LOG_MAX_BYTES: u64 = 1_000_000;
+
+/// 0 = error, 1 = info, 2 = debug.
+static LOG_LEVEL: AtomicU8 = AtomicU8::new(1);
+
+pub fn set_log_level(level: &str) {
+    let n = match level {
+        "error" => 0,
+        "debug" => 2,
+        _ => 1,
+    };
+    LOG_LEVEL.store(n, Ordering::Relaxed);
+}
+
+/// Remplace le journal par une copie `.1` s'il dépasse `max` octets.
+fn rotate_if_big(path: &std::path::Path, max: u64) {
+    if std::fs::metadata(path).is_ok_and(|m| m.len() > max) {
+        let _ = std::fs::rename(path, path.with_extension("log.1"));
+    }
+}
+
+/// Horodatage Unix + cause. Jamais le texte dicté. Les messages « [E-… » sont toujours écrits,
+/// les autres seulement si le niveau est « info » ou « debug ».
 pub fn log(msg: &str) {
-    if cfg!(test) {
+    let level = if msg.starts_with("[E-") { 0 } else { 1 };
+    write_log(level, msg);
+}
+
+/// Détail de diagnostic, écrit seulement au niveau « debug ».
+pub fn log_debug(msg: &str) {
+    write_log(2, msg);
+}
+
+fn write_log(level: u8, msg: &str) {
+    if cfg!(test) || level > LOG_LEVEL.load(Ordering::Relaxed) {
         return; // les tests ne doivent pas écrire dans le vrai journal
     }
     let ts = SystemTime::now()
@@ -74,6 +120,7 @@ pub fn log(msg: &str) {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let Some(path) = log_path() else { return };
+    rotate_if_big(&path, LOG_MAX_BYTES);
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -132,6 +179,37 @@ mod tests {
                 .to_string()
                 .contains("E-NET-OFF")
         );
+    }
+
+    #[test]
+    fn le_code_e_snd_existe() {
+        let e = Erreur::Son("afplay".into());
+        assert_eq!(e.code(), "E-SND");
+        assert!(e.to_string().starts_with("[E-SND]"));
+    }
+
+    #[test]
+    fn le_code_e_duck_existe() {
+        let e = Erreur::Duck("osascript".into());
+        assert_eq!(e.code(), "E-DUCK");
+        assert!(e.to_string().starts_with("[E-DUCK]"));
+    }
+
+    #[test]
+    fn le_journal_tourne_au_dela_du_plafond() {
+        let d = std::env::temp_dir().join(format!("diction-log-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let p = d.join("t.log");
+        std::fs::write(&p, "x".repeat(50)).unwrap();
+        rotate_if_big(&p, 100);
+        assert!(p.exists());
+        rotate_if_big(&p, 10);
+        assert!(!p.exists() && d.join("t.log.1").exists());
+        set_log_level("error");
+        assert_eq!(LOG_LEVEL.load(Ordering::Relaxed), 0);
+        set_log_level("debug");
+        assert_eq!(LOG_LEVEL.load(Ordering::Relaxed), 2);
+        set_log_level("info");
     }
 
     #[test]

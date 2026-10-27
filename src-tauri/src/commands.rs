@@ -4,7 +4,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 use diction_audio as audio;
-use diction_core::config::Config;
+use diction_core::config::{Config, host_is_local, host_of};
 use diction_core::erreur::{self, Erreur, log};
 use diction_core::{net, update};
 use diction_platform as platform;
@@ -20,6 +20,12 @@ pub struct SaveResult {
 #[tauri::command]
 pub fn get_config(app: AppHandle) -> Config {
     current_cfg(&app)
+}
+
+/// Réglages d'usine : source unique des valeurs de « Rétablir le défaut ».
+#[tauri::command]
+pub fn default_config() -> Config {
+    Config::default()
 }
 
 #[tauri::command]
@@ -57,6 +63,12 @@ pub async fn test_mic(mic: String) -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?;
     r.map_err(|e| e.to_string())
+}
+
+/// Joue l'effet « start » ou « stop » au volume demandé, pour le bouton « Tester ».
+#[tauri::command]
+pub fn test_sound(kind: String, volume: u8) {
+    platform::play_sound(&kind, volume);
 }
 
 #[tauri::command]
@@ -191,10 +203,21 @@ pub fn export_settings(app: AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub fn import_settings(app: AppHandle, path: String) -> Result<Config, String> {
     let text = std::fs::read_to_string(path.trim()).map_err(|e| e.to_string())?;
-    let imported: Config =
-        serde_json::from_str(&text).map_err(|e| format!("{}", Erreur::Reponse(e.to_string())))?;
+    let imported =
+        Config::from_json(&text).map_err(|_| "fichier de réglages illisible".to_string())?;
+    let current = current_cfg(&app);
+    for (new, old) in [
+        (&imported.url, &current.url),
+        (&imported.command_url, &current.command_url),
+    ] {
+        if !host_is_local(new) && host_of(new) != host_of(old) {
+            return Err(
+                "hôte distant refusé à l'import : règle-le à la main dans Général".to_string(),
+            );
+        }
+    }
     let cfg = Config {
-        mic: current_cfg(&app).mic,
+        mic: current.mic,
         ..imported
     };
     cfg.validate().map_err(|e| e.to_string())?;

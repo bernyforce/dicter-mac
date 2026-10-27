@@ -29,17 +29,73 @@ fn word_count(text: &str) -> usize {
     text.split_whitespace().count()
 }
 
+/// Mode de correspondance d'une règle : préfixe `[exact] ` ou `[smart] `, sinon sous-chaîne (comportement d'origine).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Match {
+    Substring,
+    /// Mot entier, sensible à la casse, entouré d'espaces ou du bord du texte.
+    Exact,
+    /// Mot entier, insensible à la casse, la ponctuation voisine est ignorée.
+    Smart,
+}
+
+/// « [mode] chercher => remplacer ». None si la règle est invalide (sans `=>` ou sans motif).
+pub fn parse_rule(line: &str) -> Option<(Match, &str, &str)> {
+    let (mode, body) = if let Some(r) = line.strip_prefix("[exact]") {
+        (Match::Exact, r)
+    } else if let Some(r) = line.strip_prefix("[smart]") {
+        (Match::Smart, r)
+    } else {
+        (Match::Substring, line)
+    };
+    let (from, to) = body.split_once("=>")?;
+    let from = from.trim();
+    (!from.is_empty()).then_some((mode, from, to.trim()))
+}
+
+fn replace_word(text: &str, from: &str, to: &str, mode: Match) -> String {
+    let (t, f): (Vec<char>, Vec<char>) = (text.chars().collect(), from.chars().collect());
+    let same = |a: char, b: char| match mode {
+        Match::Smart => a.to_lowercase().eq(b.to_lowercase()),
+        _ => a == b,
+    };
+    let edge = |c: Option<&char>| match (mode, c) {
+        (_, None) => true,
+        (Match::Exact, Some(c)) => c.is_whitespace(),
+        (_, Some(c)) => !c.is_alphanumeric(),
+    };
+    let mut out = String::new();
+    let mut i = 0;
+    while i < t.len() {
+        let end = i + f.len();
+        let hit = end <= t.len()
+            && t[i..end].iter().zip(&f).all(|(a, b)| same(*a, *b))
+            && edge(i.checked_sub(1).and_then(|j| t.get(j)))
+            && edge(t.get(end));
+        if hit {
+            out.push_str(to);
+            i = end;
+        } else {
+            out.push(t[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
 pub fn apply(text: &str, rules: &FormatRules) -> String {
     let mut t = text.trim().to_string();
     if rules.remove_hesitations {
         t = remove_hesitations(&t);
     }
     for rule in &rules.custom_rules {
-        if let Some((from, to)) = rule.split_once("=>") {
-            let from = from.trim();
-            if !from.is_empty() {
-                t = t.replace(from, to.trim());
+        match parse_rule(rule) {
+            Some((Match::Substring, from, to)) => t = t.replace(from, to),
+            Some((mode, from, to)) => t = replace_word(&t, from, to, mode),
+            None if !rule.trim().is_empty() => {
+                crate::erreur::log(&format!("règle personnalisée ignorée : {rule}"))
             }
+            None => {}
         }
     }
     if rules.short_text_words > 0 && word_count(&t) <= rules.short_text_words as usize {
@@ -117,5 +173,46 @@ mod tests {
             ..r()
         };
         assert_eq!(apply("une ia utile", &rules), "une IA utile");
+    }
+
+    fn avec(rule: &str, text: &str) -> String {
+        let rules = FormatRules {
+            custom_rules: vec![rule.into()],
+            ..r()
+        };
+        apply(text, &rules)
+    }
+
+    #[test]
+    fn mode_defaut_inchange_sous_chaine() {
+        assert_eq!(avec("ia => IA", "bia et ia"), "bIA et IA");
+        assert_eq!(avec("ia => IA", "Ia"), "Ia");
+    }
+
+    #[test]
+    fn mode_exact() {
+        assert_eq!(avec("[exact] ia => IA", "une ia utile"), "une IA utile");
+        assert_eq!(avec("[exact] ia => IA", "bia Ia ia."), "bia Ia ia.");
+    }
+
+    #[test]
+    fn mode_smart() {
+        assert_eq!(avec("[smart] ia => IA", "Ia, l'ia."), "IA, l'IA.");
+        assert_eq!(avec("[smart] ia => IA", "bia piano"), "bia piano");
+    }
+
+    #[test]
+    fn regles_de_modes_differents_dans_l_ordre() {
+        let rules = FormatRules {
+            custom_rules: vec!["[exact] ia => IA".into(), "IA => intelligence".into()],
+            ..r()
+        };
+        assert_eq!(apply("une ia", &rules), "une intelligence");
+    }
+
+    #[test]
+    fn regle_invalide_ignoree_sans_panique() {
+        assert_eq!(avec("[exact] sans fleche", "texte"), "texte");
+        assert_eq!(avec("[smart] => x", "texte"), "texte");
     }
 }

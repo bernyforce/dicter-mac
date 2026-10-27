@@ -640,7 +640,7 @@ dependencies = [
 
 [[package]]
 name = "diction-audio"
-version = "0.4.0"
+version = "0.6.0"
 dependencies = [
  "cpal",
  "diction-core",
@@ -648,7 +648,7 @@ dependencies = [
 
 [[package]]
 name = "diction-core"
-version = "0.4.0"
+version = "0.6.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -657,7 +657,7 @@ dependencies = [
 
 [[package]]
 name = "diction-mac"
-version = "0.4.0"
+version = "0.6.0"
 dependencies = [
  "diction-audio",
  "diction-core",
@@ -671,7 +671,7 @@ dependencies = [
 
 [[package]]
 name = "diction-platform"
-version = "0.4.0"
+version = "0.6.0"
 dependencies = [
  "diction-core",
 ]

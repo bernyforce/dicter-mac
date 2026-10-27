@@ -3,6 +3,7 @@ name = "diction-audio"
 description = "Capture du micro et encodage WAV."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 cpal.workspace = true

@@ -6,13 +6,13 @@
 mod commands;
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, mpsc};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Emitter, LogicalPosition, Manager, WindowEvent};
+use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use diction_audio::{self as audio, Cmd, Handlers};
@@ -20,7 +20,7 @@ use diction_core::config::{self, Config};
 use diction_core::erreur::{self, Erreur, log};
 use diction_core::history::History;
 use diction_core::{commande, format, net};
-use diction_platform::{self as platform, paste};
+use diction_platform::{self as platform, duck, paste};
 
 use commands::SaveResult;
 
@@ -28,6 +28,8 @@ const OVERLAY_W: f64 = 240.0;
 const OVERLAY_H: f64 = 56.0;
 const MIN_SECONDS: f32 = 0.3;
 const KEPT_AUDIO: usize = 5;
+/// Durée maximale d'un enregistrement, en secondes.
+const MAX_SECONDS: u64 = 300;
 
 #[derive(Default)]
 struct Shortcuts {
@@ -42,6 +44,8 @@ pub(crate) struct Shared {
     path: PathBuf,
     tx: mpsc::Sender<Cmd>,
     recording: AtomicBool,
+    /// Numéro de l'enregistrement en cours : un ancien minuteur ne touche pas un nouvel enregistrement.
+    session: AtomicU64,
     cancelled: AtomicBool,
     /// Vrai si l'enregistrement en cours est une instruction du Mode Commande.
     command: AtomicBool,
@@ -50,6 +54,8 @@ pub(crate) struct Shared {
     pub(crate) history: Mutex<History>,
     pub(crate) history_path: PathBuf,
     audio_dir: PathBuf,
+    /// Volume d'origine si on l'a baissé pour cet enregistrement ; `restore_volume` le remet.
+    ducked: Mutex<Option<duck::Ducked>>,
 }
 
 pub(crate) fn current_cfg(app: &AppHandle) -> Config {
@@ -64,7 +70,9 @@ fn set_state(app: &AppHandle, s: &str) {
     let _ = app.emit("state", s);
 }
 
-fn show_overlay(app: &AppHandle, position: &str) {
+fn show_overlay(app: &AppHandle, cfg: &Config) {
+    let (position, k) = (cfg.overlay_position.as_str(), cfg.overlay_scale());
+    let (ow, oh) = (OVERLAY_W * k, OVERLAY_H * k);
     let Some(w) = app.get_webview_window("overlay") else {
         return;
     };
@@ -72,12 +80,14 @@ fn show_overlay(app: &AppHandle, position: &str) {
         let s = m.scale_factor();
         let (mw, mh) = (m.size().width as f64 / s, m.size().height as f64 / s);
         let y = if position == "bottom" {
-            mh - OVERLAY_H - 90.0
+            mh - oh - 90.0
         } else {
             48.0
         };
-        let _ = w.set_position(LogicalPosition::new((mw - OVERLAY_W) / 2.0, y));
+        let _ = w.set_position(LogicalPosition::new((mw - ow) / 2.0, y));
     }
+    let _ = w.set_size(LogicalSize::new(ow, oh));
+    let _ = w.eval(format!("document.documentElement.style.zoom={k}"));
     let _ = w.set_ignore_cursor_events(true);
     let _ = w.show();
 }
@@ -111,24 +121,71 @@ fn set_dock(app: &AppHandle, show: bool) {
     let _ = (app, show);
 }
 
+/// Remet le volume système s'il a été baissé. Idempotent : peut être appelé de partout.
+fn restore_volume(app: &AppHandle) {
+    if let Ok(mut g) = app.state::<Shared>().ducked.lock()
+        && let Some(d) = g.take()
+    {
+        duck::restore(&d);
+    }
+}
+
 fn start_recording(app: &AppHandle) {
     let sh = app.state::<Shared>();
     if sh.recording.swap(true, Ordering::SeqCst) {
         return;
     }
     let cfg = current_cfg(app);
+    erreur::log_debug("enregistrement démarré");
     let _ = sh.tx.send(Cmd::Start(cfg.mic.clone()));
     // « Annuler » n'est actif que pendant l'enregistrement : il ne vole pas la touche le reste du temps.
     if let Some(c) = sh.shortcuts.lock().ok().and_then(|s| s.cancel) {
         let _ = app.global_shortcut().register(c);
     }
-    if cfg.sounds {
+    if cfg.sound_start {
         platform::play_sound("start", cfg.sound_volume);
     }
     if cfg.overlay {
-        show_overlay(app, &cfg.overlay_position);
+        show_overlay(app, &cfg);
     }
     set_state(app, "recording");
+    let id = sh.session.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    if cfg.duck_others {
+        let app = app.clone();
+        std::thread::spawn(move || {
+            // Le son de début doit finir avant la baisse, sinon il serait joué trop bas.
+            if cfg.sound_start {
+                std::thread::sleep(Duration::from_millis(300));
+            }
+            let sh = app.state::<Shared>();
+            // Le verrou couvre la baisse : un arrêt concurrent attend, puis restaure.
+            if let Ok(mut g) = sh.ducked.lock()
+                && sh.recording.load(Ordering::SeqCst)
+                && sh.session.load(Ordering::SeqCst) == id
+            {
+                *g = duck::begin(cfg.duck_percent);
+            }
+        });
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(MAX_SECONDS));
+        let sh = app.state::<Shared>();
+        if autostop_due(
+            sh.session.load(Ordering::SeqCst),
+            id,
+            sh.recording.load(Ordering::SeqCst),
+        ) {
+            log("enregistrement arrêté : durée maximale atteinte");
+            platform::notifier("Enregistrement arrêté après 5 minutes (durée maximale)");
+            stop_recording(&app);
+        }
+    });
+}
+
+/// Le minuteur arrête l'enregistrement seulement si c'est encore le sien.
+fn autostop_due(current: u64, started: u64, recording: bool) -> bool {
+    recording && current == started
 }
 
 fn release_cancel(app: &AppHandle) {
@@ -149,8 +206,9 @@ fn stop_recording(app: &AppHandle) {
         return;
     }
     release_cancel(app);
+    restore_volume(app);
     let cfg = current_cfg(app);
-    if cfg.sounds {
+    if cfg.sound_stop {
         platform::play_sound("stop", cfg.sound_volume);
     }
     let _ = sh.tx.send(Cmd::Stop);
@@ -165,6 +223,7 @@ fn cancel_recording(app: &AppHandle) {
     }
     sh.cancelled.store(true, Ordering::SeqCst);
     release_cancel(app);
+    restore_volume(app);
     let _ = sh.tx.send(Cmd::Stop);
     set_state(app, "idle");
     hide_overlay(app);
@@ -173,6 +232,7 @@ fn cancel_recording(app: &AppHandle) {
 
 /// Fin d'un cycle : retour au repos, ou erreur affichée 3 s puis retour au repos.
 fn finish(app: &AppHandle, err: Option<Erreur>) {
+    restore_volume(app);
     let Some(e) = err else {
         set_state(app, "idle");
         hide_overlay(app);
@@ -254,18 +314,31 @@ fn handle_audio(app: &AppHandle, samples: Vec<i16>, rate: u32) {
             finish(&app, run_command(&app, &cfg, &wav).err());
             return;
         }
+        let mut shown = false;
         let r = net::transcribe(&cfg, "dictee.wav", &wav).and_then(|t| {
             let text = format::apply(&t, &cfg.format);
             if text.is_empty() {
                 return Ok(());
             }
             remember(&app, &text, &cfg);
+            // Le texte part vers la pastille seulement, jamais vers le journal.
+            if cfg.show_result && cfg.overlay {
+                let _ = app.emit("result", &text);
+                shown = true;
+            }
             if cfg.auto_insert {
                 paste::deliver(&text, &cfg)
             } else {
                 Ok(())
             }
         });
+        if shown {
+            std::thread::sleep(Duration::from_secs(u64::from(cfg.result_seconds)));
+            // Un nouvel enregistrement a repris la pastille : il gère lui-même son état.
+            if r.is_ok() && app.state::<Shared>().recording.load(Ordering::SeqCst) {
+                return;
+            }
+        }
         finish(&app, r.err());
     });
 }
@@ -355,29 +428,37 @@ fn apply_shortcuts(app: &AppHandle, cfg: &Config) -> Result<(), String> {
     let _ = gs.unregister_all();
     let parse = |s: &str| s.parse::<Shortcut>().map_err(|e| format!("« {s} » : {e}"));
     let result = (|| {
-        let (main, last, cancel) = (
-            parse(&cfg.shortcut)?,
-            parse(&cfg.shortcut_paste_last)?,
-            parse(&cfg.shortcut_cancel)?,
+        // Un raccourci vide (« Effacer ») n'est pas enregistré.
+        let parse_opt = |s: &str| {
+            if s.trim().is_empty() {
+                Ok(None)
+            } else {
+                parse(s).map(Some)
+            }
+        };
+        let main = parse(&cfg.shortcut)?;
+        let (last, cancel) = (
+            parse_opt(&cfg.shortcut_paste_last)?,
+            parse_opt(&cfg.shortcut_cancel)?,
         );
         let command = if cfg.command_enabled {
-            Some(parse(&cfg.shortcut_command)?)
+            parse_opt(&cfg.shortcut_command)?
         } else {
             None
         };
         if let Ok(mut s) = app.state::<Shared>().shortcuts.lock() {
             *s = Shortcuts {
                 main: Some(main),
-                paste_last: Some(last),
-                cancel: Some(cancel),
+                paste_last: last,
+                cancel,
                 command,
             };
         }
         let mut errs = Vec::new();
-        let mut all = vec![
-            ("enregistrement", main),
-            ("coller la dernière transcription", last),
-        ];
+        let mut all = vec![("enregistrement", main)];
+        if let Some(l) = last {
+            all.push(("coller la dernière transcription", l));
+        }
         if let Some(c) = command {
             all.push(("mode Commande", c));
         }
@@ -405,6 +486,7 @@ fn apply_shortcuts(app: &AppHandle, cfg: &Config) -> Result<(), String> {
 pub(crate) fn apply_config(app: &AppHandle, cfg: Config) -> Result<SaveResult, String> {
     let sh = app.state::<Shared>();
     config::save(&sh.path, &cfg).map_err(|e| e.to_string())?;
+    erreur::set_log_level(&cfg.log_level);
     let old = match sh.cfg.lock() {
         Ok(mut c) => std::mem::replace(&mut *c, cfg.clone()),
         Err(_) => return Err("réglages verrouillés".into()),
@@ -469,6 +551,12 @@ fn main() {
     }
 
     erreur::install_panic_hook();
+    // Une panique ne doit pas laisser le volume baissé : on restaure avant d'écrire le journal.
+    let log_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        duck::restore_pending();
+        log_hook(info);
+    }));
     let built = tauri::Builder::default()
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -486,10 +574,12 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
+            commands::default_config,
             commands::save_config,
             commands::shortcut_status,
             commands::test_connection,
             commands::test_mic,
+            commands::test_sound,
             commands::list_mics,
             commands::accessibility,
             commands::open_privacy,
@@ -509,6 +599,10 @@ fn main() {
             let path = dir.join("config.json");
             let history_path = dir.join("history.json");
             let cfg = config::load(&path);
+            // Volume resté bas après un plantage ou un arrêt brutal : on le remet avant tout le reste.
+            duck::init(&dir);
+            duck::restore_pending();
+            erreur::set_log_level(&cfg.log_level);
             let history = if cfg.history_enabled {
                 History::load(&history_path)
             } else {
@@ -522,6 +616,7 @@ fn main() {
                 path,
                 tx,
                 recording: AtomicBool::new(false),
+                session: AtomicU64::new(0),
                 cancelled: AtomicBool::new(false),
                 command: AtomicBool::new(false),
                 shortcut_error: Mutex::new(None),
@@ -529,6 +624,7 @@ fn main() {
                 history: Mutex::new(history),
                 history_path,
                 audio_dir: app.path().app_cache_dir()?.join("audio"),
+                ducked: Mutex::new(None),
             });
             set_dock(app.handle(), boot.show_dock);
 
@@ -606,6 +702,10 @@ fn main() {
         }
     };
     app.run(|app, event| {
+        if let tauri::RunEvent::Exit = event {
+            restore_volume(app);
+            duck::restore_pending();
+        }
         // Un clic sur l'icône de l'app alors qu'elle tourne déjà doit rouvrir la fenêtre.
         #[cfg(target_os = "macos")]
         if let tauri::RunEvent::Reopen { .. } = event {
@@ -614,4 +714,16 @@ fn main() {
         #[cfg(not(target_os = "macos"))]
         let _ = (app, event);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::autostop_due;
+
+    #[test]
+    fn minuteur_ne_touche_pas_un_autre_enregistrement() {
+        assert!(autostop_due(3, 3, true));
+        assert!(!autostop_due(4, 3, true));
+        assert!(!autostop_due(3, 3, false));
+    }
 }

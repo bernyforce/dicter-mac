@@ -41,9 +41,10 @@ Il installe automatiquement, mais impose une clé de signature privée (perdre l
 | E-NET-OFF | passerelle injoignable | passerelle lancée ? adresse ? Tailscale ? |
 | E-NET-HTTP | refus de la passerelle | code HTTP dans le message |
 | E-NET-RESP | réponse non lisible | version de la passerelle |
-| E-PASTE | collage | autorisation Accessibilité ; le texte reste dans le presse-papiers |
+| E-PASTE | collage (⌘V, Terminal ⌃⇧V, direct) | autorisation Accessibilité ; le texte reste dans le presse-papiers |
 | E-CFG | réglage invalide | valeur refusée citée dans le message |
 | E-UPD | mise à jour | dépôt `propriétaire/dépôt`, accès à api.github.com |
+| E-DUCK | volume système (osascript) | sans gravité, la dictée continue ; vérifier `osascript` et la sortie audio |
 | E-PANIC | bogue du programme | lieu (`fichier:ligne`) dans le message |
 | E-START | démarrage impossible | message de Tauri dans le journal |
 
@@ -58,7 +59,19 @@ Les autorisations macOS empêchent de les automatiser.
 5. Changer le raccourci : l'ancien ne répond plus, le nouveau marche.
 
 ## Sécurité
+- Le marqueur de presse-papiers confidentiel n'est pas posé : `pbcopy` ne permet pas de le définir (limite connue). Le texte dicté reste donc visible dans les gestionnaires de presse-papiers pendant le collage.
 - Aucun secret dans le dépôt ni dans le journal. Le texte dicté n'est jamais écrit sur disque (sauf historique, désactivé par défaut).
 - Les adresses venant du réseau ne sont ouvertes que si elles commencent par `https://github.com/`.
 - Le dépôt de mise à jour est validé (`propriétaire/dépôt`, caractères sûrs) avant de construire l'URL.
 - Audit des dépendances : `cargo audit` (base RustSec) dans le workflow CI.
+
+## Réglages ajoutés en 0.5.0
+- `paste_method` : `paste`, `direct`, `copy` ou `terminal` (⌃⇧V). `copy_to_clipboard` : garde le texte dans le presse-papiers (pas de restauration).
+- `format.custom_rules` : ligne `[exact] a => b` ou `[smart] a => b`, sinon sous-chaîne. Pas de regex. Une règle sans `=>` ou sans motif est ignorée et écrite au journal.
+- `overlay_size` : `small` (0,8), `medium` (1), `large` (1,3).
+- Raccourcis vides permis sauf `shortcut`. La version du fichier reste 1 (nouveaux champs avec valeur par défaut).
+
+## Réglages ajoutés en 0.6.0
+- `duck_others` (faux), `duck_percent` (20, de 0 à 80, % du volume actuel), `show_result` (faux), `result_seconds` (3, de 1 à 10). La version du fichier passe à 2.
+- Le volume est lu et posé par `osascript` (`diction-platform/src/duck.rs`). `restore` est idempotent et appelé dans `stop_recording`, `cancel_recording`, `finish`, le hook de panique, l'arrêt de l'app et au lancement. Filet de sécurité : `duck-pending` (0600) dans le dossier de configuration, supprimé à la restauration.
+- Le texte reconnu va à la pastille par l'événement `result`, jamais au journal.

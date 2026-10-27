@@ -75,8 +75,9 @@ pre{background:var(--card);border:1px solid var(--line);border-radius:8px;paddin
   <div class="row"><div>Supprimer les hésitations<small>euh, um, hmm… (utile si le nettoyage par l'IA est désactivé)</small></div><input type="checkbox" data-k="format.remove_hesitations"></div>
  </div>
  <h2>Règles personnalisées</h2>
- <p class="mut">Une règle par ligne : <code>chercher =&gt; remplacer</code>. Remplacement exact, appliqué dans l'ordre.</p>
- <textarea data-k="format.custom_rules" data-lines placeholder="ia =&gt; IA"></textarea></section>
+ <p class="mut">Une règle par ligne : <code>chercher =&gt; remplacer</code>, appliquée dans l'ordre. Mode par règle ci-dessous : « Sous-chaîne » (défaut), « Mot exact » (casse respectée, entouré d'espaces) ou « Mot souple » (casse et ponctuation voisine ignorées).</p>
+ <textarea id="rules" data-k="format.custom_rules" data-lines placeholder="ia =&gt; IA"></textarea>
+ <div id="rulelist"></div></section>
 
 <section id="general"><h2>Général</h2>
  <div class="card">
@@ -109,8 +110,10 @@ pre{background:var(--card);border:1px solid var(--line);border-radius:8px;paddin
 <section id="insert"><h2>Insertion du texte</h2>
  <div class="card">
   <div class="row"><div>Insertion automatique<small>Si désactivée, le texte n'est pas inséré : utilise « Coller la dernière transcription ».</small></div><input type="checkbox" data-k="auto_insert"></div>
+  <div class="row"><div>Texte sur une seule ligne<small>Remplace les retours à la ligne par des espaces avant le collage</small></div><input type="checkbox" data-k="single_line"></div>
   <div class="row"><div>Mode d'insertion<small>Standard : ⌘V, rapide. Direct : tape caractère par caractère, lent mais sans presse-papiers. Copie seule : ne colle rien.</small></div>
-   <select data-k="paste_method"><option value="paste">Standard (⌘V)</option><option value="direct">Direct (caractère par caractère)</option><option value="copy">Copier seulement</option></select></div>
+   <select data-k="paste_method"><option value="paste">Standard (⌘V)</option><option value="direct">Direct (caractère par caractère)</option><option value="terminal">Terminal (⌃⇧V)</option><option value="copy">Copier seulement</option></select></div>
+  <div class="row"><div>Copier aussi dans le presse-papiers<small>Le texte reste dans le presse-papiers après l'insertion (l'ancien contenu n'est alors pas restauré)</small></div><input type="checkbox" data-k="copy_to_clipboard"></div>
   <div class="row"><div>Restaurer le presse-papiers<small>Remet ton ancien contenu texte après le collage</small></div><input type="checkbox" data-k="restore_clipboard"></div>
   <div class="row"><div>Délai avant restauration (ms)</div><input type="number" min="0" max="5000" step="50" data-k="paste_delay_ms" data-int></div>
  </div></section>
@@ -119,8 +122,14 @@ pre{background:var(--card);border:1px solid var(--line);border-radius:8px;paddin
  <div class="card">
   <div class="row"><div>Afficher la pastille<small>Indicateur avec signal oscillant pendant l'enregistrement</small></div><input type="checkbox" data-k="overlay"></div>
   <div class="row"><div>Position</div><select data-k="overlay_position"><option value="top">Haut de l'écran</option><option value="bottom">Bas de l'écran</option></select></div>
-  <div class="row"><div>Effets sonores</div><input type="checkbox" data-k="sounds"></div>
+  <div class="row"><div>Taille de la pastille</div><select data-k="overlay_size"><option value="small">Petite</option><option value="medium">Moyenne</option><option value="large">Grande</option></select></div>
+  <div class="row"><div>Son de début</div><span><button class="b" data-snd="start">Tester</button> <input type="checkbox" data-k="sound_start"></span></div>
+  <div class="row"><div>Son de fin</div><span><button class="b" data-snd="stop">Tester</button> <input type="checkbox" data-k="sound_stop"></span></div>
   <div class="row"><div>Volume des effets sonores</div><span><input type="range" min="0" max="100" data-k="sound_volume" data-int> <b id="vol"></b></span></div>
+  <div class="row"><div>Baisser les autres sons pendant la dictée<small>Le volume système est remis à la fin, même après une erreur</small></div><input type="checkbox" data-k="duck_others"></div>
+  <div class="row"><div>Volume pendant la dictée</div><span><input type="range" min="0" max="80" data-k="duck_percent" data-int> <b id="duck"></b></span></div>
+  <div class="row"><div>Afficher le texte reconnu dans la pastille<small>Demande que la pastille soit affichée</small></div><input type="checkbox" data-k="show_result"></div>
+  <div class="row"><div>Durée d'affichage (secondes)</div><span><input type="range" min="1" max="10" data-k="result_seconds" data-int> <b id="resSec"></b></span></div>
  </div></section>
 
 <section id="system"><h2>Système</h2>
@@ -129,6 +138,7 @@ pre{background:var(--card);border:1px solid var(--line);border-radius:8px;paddin
   <div class="row"><div>Afficher dans le Dock<small>Si affiché, la pastille ne passe pas au-dessus des apps en plein écran</small></div><input type="checkbox" data-k="show_dock"></div>
   <div class="row"><div>Enregistrer l'historique<small>Les 5 dernières transcriptions sur le disque. Désactivé : mémoire seulement.</small></div><input type="checkbox" data-k="history_enabled"></div>
   <div class="row"><div>Conserver les enregistrements audio<small>Les 5 derniers, pour comprendre un échec de transcription</small></div><input type="checkbox" data-k="keep_audio"></div>
+  <div class="row"><div>Niveau du journal<small>Les erreurs sont toujours écrites. Le fichier est plafonné à 1 Mo.</small></div><select data-k="log_level"><option value="error">Erreurs</option><option value="info">Info</option><option value="debug">Debug</option></select></div>
   <div class="row"><div>Dossier du journal</div><button class="b" id="logdir">Ouvrir</button></div>
  </div><p class="err" id="syswarn"></p></section>
 
@@ -193,8 +203,25 @@ function read(){
     set(cfg,el.dataset.k,v);
   });
 }
-function cosmetics(){
-  $('stw').textContent=cfg.format.short_text_words||'off';$('vol').textContent=cfg.sound_volume+' %';
+// Mode de correspondance par règle : préfixe [exact] ou [smart] sur la ligne (voir format.rs).
+const MODES=[['','Sous-chaîne'],['[exact] ','Mot exact'],['[smart] ','Mot souple']];
+function renderRules(){
+  const ta=$('rules'),box=$('rulelist');box.innerHTML='';
+  const lines=ta.value.split('\n');
+  lines.forEach((l,i)=>{
+    if(!l.trim())return;
+    const m=/^\[(exact|smart)\]\s*/.exec(l),body=m?l.slice(m[0].length):l,cur=m?'['+m[1]+'] ':'';
+    const row=document.createElement('div');row.className='row';
+    const sel=document.createElement('select');
+    MODES.forEach(([v,t])=>sel.add(new Option(t,v)));sel.value=cur;
+    sel.onchange=()=>{lines[i]=sel.value+body;ta.value=lines.join('\n');ta.dispatchEvent(new Event('input'))};
+    const d=document.createElement('div');d.textContent=body;
+    row.append(d,sel);box.append(row);
+  });
+}
+$('rules').addEventListener('input',renderRules);
+function cosmetics(){renderRules();
+  $('stw').textContent=cfg.format.short_text_words||'off';$('vol').textContent=cfg.sound_volume+' %';$('duck').textContent=cfg.duck_percent+' %';$('resSec').textContent=cfg.result_seconds+' s';
   $('dcount').textContent=cfg.dictionary.length+' mot(s)';
 }
 async function save(){
@@ -210,13 +237,22 @@ fields().forEach(e=>{
 });
 
 // ---------- raccourcis ----------
-function pretty(s){return s.replace('Control','⌃').replace('Alt','⌥').replace('Shift','⇧').replace('Super','⌘').replace(/\+/g,' ')}
+function pretty(s){return !s?'Aucun':s.replace('Control','⌃').replace('Alt','⌥').replace('Shift','⇧').replace('Super','⌘').replace(/\+/g,' ')}
 function showSc(err){
   $('sdot').className='dot '+(err?'bad':'ok');$('sstate').textContent=err?'Raccourcis non actifs':'Raccourcis actifs';
   $('shint').textContent=cfg?('Parler : '+pretty(cfg.shortcut)+' · Coller la dernière : '+pretty(cfg.shortcut_paste_last)):'';
   const m=err?('Conflit probable avec une autre app ou macOS : '+err):'';$('scerr').textContent=m;$('scerr2').textContent=m;$('scerr3').textContent=m;
 }
 async function scStatus(){showSc(await invoke('shortcut_status'))}
+// Boutons « Effacer » et « Rétablir le défaut » à côté de chaque raccourci ; le défaut vient du backend (Config::default).
+document.querySelectorAll('[data-sc]').forEach(btn=>{
+  const key=btn.dataset.sc,box=document.createElement('span');
+  btn.replaceWith(box);box.append(btn,' ');
+  const mk=(txt,fn)=>{const b=document.createElement('button');b.className='b';b.textContent=txt;b.onclick=fn;box.append(b,' ');return b};
+  const clr=mk('Effacer',()=>{cfg[key]='';btn.textContent=pretty('');save()});
+  if(key==='shortcut')clr.disabled=true; // l'enregistrement doit garder un raccourci
+  mk('Rétablir le défaut',async()=>{cfg[key]=(await invoke('default_config'))[key];btn.textContent=pretty(cfg[key]);save()});
+});
 document.querySelectorAll('[data-sc]').forEach(btn=>{
   btn.onclick=()=>{btn.classList.add('rec');btn.textContent='Appuie sur la combinaison…';btn.focus()};
   btn.onblur=()=>{btn.classList.remove('rec');btn.textContent=pretty(cfg[btn.dataset.sc])};
@@ -277,6 +313,7 @@ $('mtest').onclick=async()=>{
   try{await invoke('test_mic',{mic:cfg.mic});$('mdot').className='dot ok';$('mstate').textContent='Microphone : accès OK'}
   catch(e){$('mdot').className='dot bad';$('mstate').textContent='Microphone : '+e}
 };
+document.querySelectorAll('[data-snd]').forEach(b=>b.onclick=()=>{read();invoke('test_sound',{kind:b.dataset.snd,volume:cfg.sound_volume})});
 $('logdir').onclick=()=>invoke('open_logs_folder');
 $('exp').onclick=async()=>{try{$('iores').textContent='Créé : '+await invoke('export_settings')}catch(e){$('iores').textContent='Échec : '+e}};
 $('imp').onclick=async()=>{
